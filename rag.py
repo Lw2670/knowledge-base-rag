@@ -99,24 +99,44 @@ def rebuild():
     return build_index(load_docs())
 
 
-def ask(vectordb, question, k=3):
-    """4. 检索生成"""
-    retrieved = vectordb.similarity_search(question, k=k)
-    context = "\n\n".join([d.page_content for d in retrieved])
-
-    llm = ChatOpenAI(
+def _make_llm(streaming=False):
+    """创建大模型实例"""
+    return ChatOpenAI(
         model=LLM_MODEL,
         api_key=LLM_API_KEY,
         base_url=LLM_BASE_URL,
         temperature=0.3,
+        streaming=streaming,
     )
-    prompt = (
+
+
+def build_prompt(question, context):
+    return (
         "请根据以下资料回答问题。如果资料中没有答案，就说不知道，不要编造。\n\n"
         f"资料：\n{context}\n\n"
         f"问题：{question}\n\n"
         "回答："
     )
-    answer = llm.invoke(prompt)
+
+
+def retrieve(vectordb, question, k=4):
+    """检索：返回最相关的 k 条笔记"""
+    return vectordb.similarity_search(question, k=k)
+
+
+def answer_stream(question, retrieved):
+    """流式生成答案，逐段 yield 文本片段（供界面实时展示思考过程）"""
+    context = "\n\n".join([d.page_content for d in retrieved])
+    for chunk in _make_llm(streaming=True).stream(build_prompt(question, context)):
+        if chunk.content:
+            yield chunk.content
+
+
+def ask(vectordb, question, k=4):
+    """完整流程（命令行用）：检索 + 生成，返回答案和来源"""
+    retrieved = retrieve(vectordb, question, k)
+    context = "\n\n".join([d.page_content for d in retrieved])
+    answer = _make_llm(streaming=False).invoke(build_prompt(question, context))
     return answer.content, retrieved
 
 
