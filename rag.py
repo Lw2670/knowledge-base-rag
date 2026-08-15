@@ -110,12 +110,23 @@ def _make_llm(streaming=False):
     )
 
 
-def build_prompt(question, context):
-    return (
-        "请根据以下资料回答问题。如果资料中没有答案，就说不知道，不要编造。\n\n"
-        f"资料：\n{context}\n\n"
-        f"问题：{question}\n\n"
-        "回答："
+def build_prompt(question, context, history_text=""):
+    parts = ["请根据以下资料回答问题。如果资料中没有答案，就说不知道，不要编造。"]
+    if history_text:
+        parts.append(f"之前的对话：\n{history_text}")
+    parts.append(f"资料：\n{context}")
+    parts.append(f"问题：{question}")
+    parts.append("回答：")
+    return "\n\n".join(parts)
+
+
+def _format_history(history):
+    """把会话历史转成文本（最近 4 条）"""
+    if not history:
+        return ""
+    recent = history[-4:]
+    return "\n".join(
+        [f"{'用户' if m['role'] == 'user' else 'AI'}：{m['content']}" for m in recent]
     )
 
 
@@ -124,19 +135,31 @@ def retrieve(vectordb, question, k=4):
     return vectordb.similarity_search(question, k=k)
 
 
-def answer_stream(question, retrieved):
+def build_query(question, history=None):
+    """追问检测：问题很短且有历史时，拼接上一轮用户问题，帮助检索指代"""
+    if history and len(question.strip()) < 12:
+        prev = [m["content"] for m in history if m["role"] == "user"]
+        if prev:
+            return prev[-1] + " " + question
+    return question
+
+
+def answer_stream(question, retrieved, history=None):
     """流式生成答案，逐段 yield 文本片段（供界面实时展示思考过程）"""
     context = "\n\n".join([d.page_content for d in retrieved])
-    for chunk in _make_llm(streaming=True).stream(build_prompt(question, context)):
+    history_text = _format_history(history)
+    for chunk in _make_llm(streaming=True).stream(build_prompt(question, context, history_text)):
         if chunk.content:
             yield chunk.content
 
 
-def ask(vectordb, question, k=4):
+def ask(vectordb, question, k=4, history=None):
     """完整流程（命令行用）：检索 + 生成，返回答案和来源"""
-    retrieved = retrieve(vectordb, question, k)
+    query = build_query(question, history)
+    retrieved = retrieve(vectordb, query, k)
     context = "\n\n".join([d.page_content for d in retrieved])
-    answer = _make_llm(streaming=False).invoke(build_prompt(question, context))
+    history_text = _format_history(history)
+    answer = _make_llm(streaming=False).invoke(build_prompt(question, context, history_text))
     return answer.content, retrieved
 
 
