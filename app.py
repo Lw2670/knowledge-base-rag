@@ -51,7 +51,8 @@ if question.strip():
         st.write(f"　在知识库中检索到 {len(retrieved)} 条最相关内容：")
         for i, s in enumerate(retrieved, 1):
             src = os.path.basename(s.metadata.get("source", "未知"))
-            st.write(f"　· [{i}] {src}")
+            snippet = s.page_content.replace("\n", " ").strip()[:40]
+            st.write(f"　· [{i}] {src} — {snippet}...")
 
         st.write("🤖 **③ 生成答案**")
         status.update(label=f"思考完成 · 检索到 {len(retrieved)} 条笔记", state="complete")
@@ -60,7 +61,8 @@ if question.strip():
     st.markdown("### 回答")
     st.write_stream(rag.answer_stream(question, retrieved))
 
-    st.markdown("### 引用来源")
-    for s in retrieved:
-        src = s.metadata.get("source", "未知")
-        st.markdown(f"- `{src}`")
+    st.markdown("### 引用来源（点击展开查看笔记原文）")
+    for i, s in enumerate(retrieved, 1):
+        fname = os.path.basename(s.metadata.get("source", "未知"))
+        with st.expander(f"[{i}] {fname}"):
+            st.markdown(s.page_content.strip())
