@@ -1,0 +1,8 @@
+# 配置文件模板
+# 使用方法：把本文件复制一份，改名为 config.py，填入你自己的密钥
+# config.py 已被 .gitignore 排除，不会提交到仓库
+
+# 智谱 AI（GLM）
+LLM_API_KEY = "在这里填入你的智谱 API Key"
+LLM_BASE_URL = "https://open.bigmodel.cn/api/paas/v4/"
+LLM_MODEL = "glm-4-flash"

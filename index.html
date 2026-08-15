@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>个人知识库问答系统 · RAG</title>
+<style>
+  :root {
+    --bg: #f7f9f8;
+    --card: #ffffff;
+    --ink: #1f2937;
+    --muted: #6b7280;
+    --line: #e5e7eb;
+    --teal: #0f6e56;
+    --teal-soft: #e1f5ee;
+    --amber: #b45309;
+    --amber-soft: #fef3c7;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.7;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 0 24px; }
+  header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 20px 0; flex-wrap: wrap; gap: 12px;
+  }
+  .logo { font-size: 18px; font-weight: 600; color: var(--teal); }
+  .gh-link {
+    text-decoration: none; font-size: 14px; color: var(--muted);
+    border: 1px solid var(--line); padding: 6px 14px; border-radius: 999px;
+  }
+  .gh-link:hover { color: var(--teal); border-color: var(--teal); }
+  .hero { padding: 56px 0 40px; text-align: center; }
+  .hero h1 { font-size: 40px; font-weight: 700; letter-spacing: -0.5px; }
+  .hero h1 .accent { color: var(--teal); }
+  .hero p { font-size: 18px; color: var(--muted); margin-top: 14px; max-width: 620px; margin-left: auto; margin-right: auto; }
+  .cta { margin-top: 32px; display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+  .btn {
+    display: inline-block; text-decoration: none; font-size: 16px; font-weight: 600;
+    padding: 13px 28px; border-radius: 12px; transition: transform .12s, box-shadow .12s;
+  }
+  .btn:hover { transform: translateY(-2px); }
+  .btn-primary { background: var(--teal); color: #fff; box-shadow: 0 6px 18px rgba(15,110,86,.25); }
+  .btn-ghost { background: var(--card); color: var(--ink); border: 1px solid var(--line); }
+  .note { font-size: 13px; color: var(--muted); margin-top: 14px; }
+  section { padding: 28px 0; }
+  h2 { font-size: 24px; font-weight: 700; margin-bottom: 18px; }
+  .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  .step {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 22px 18px; position: relative;
+  }
+  .step .num {
+    width: 30px; height: 30px; border-radius: 50%; background: var(--teal-soft);
+    color: var(--teal); font-weight: 700; display: flex; align-items: center; justify-content: center;
+    margin-bottom: 12px; font-size: 14px;
+  }
+  .step h3 { font-size: 16px; margin-bottom: 6px; }
+  .step p { font-size: 13px; color: var(--muted); }
+  .badges { display: flex; flex-wrap: wrap; gap: 10px; }
+  .badge {
+    background: var(--card); border: 1px solid var(--line); border-radius: 999px;
+    padding: 7px 16px; font-size: 14px; color: var(--ink);
+  }
+  .badge b { color: var(--teal); font-weight: 600; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 24px; }
+  .card h3 { font-size: 16px; margin-bottom: 10px; }
+  .card ol { padding-left: 20px; font-size: 14px; }
+  .card li { margin: 6px 0; }
+  code {
+    background: #f1f5f4; border: 1px solid #e2e8e6; border-radius: 6px;
+    padding: 2px 7px; font-family: "SF Mono", Consolas, "Courier New", monospace; font-size: 13px; color: #0b5c48;
+  }
+  pre {
+    background: #0f172a; color: #e2e8f0; border-radius: 12px; padding: 18px;
+    overflow-x: auto; font-size: 13px; line-height: 1.6; margin: 12px 0;
+  }
+  pre code { background: none; border: none; color: #a7f3d0; font-size: 13px; padding: 0; }
+  footer { padding: 36px 0 48px; text-align: center; font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); margin-top: 20px; }
+  @media (max-width: 720px) {
+    .steps { grid-template-columns: repeat(2, 1fr); }
+    .hero h1 { font-size: 30px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="logo">📚 个人知识库问答系统</div>
+    <a class="gh-link" href="https://github.com/Lw2670/knowledge-base-rag" target="_blank">GitHub 仓库</a>
+  </header>
+
+  <div class="hero">
+    <h1>把你的笔记，变成<span class="accent">可对话的第二大脑</span></h1>
+    <p>一个基于 RAG（检索增强生成）的知识库问答系统：读取你的 Markdown 笔记，用中文向量检索 + 大模型，回答你提出的问题——答案还带出处，绝不凭空编造。</p>
+    <div class="cta">
+      <a class="btn btn-primary" href="http://localhost:8501" target="_blank">进入问答系统</a>
+      <a class="btn btn-ghost" href="https://github.com/Lw2670/knowledge-base-rag" target="_blank">查看代码</a>
+    </div>
+    <p class="note">「进入问答系统」需要先在本机启动服务（见下方快速开始），启动后访问 localhost:8501</p>
+  </div>
+
+  <section>
+    <h2>它是怎么工作的</h2>
+    <div class="steps">
+      <div class="step">
+        <div class="num">1</div>
+        <h3>文档加载</h3>
+        <p>读取知识库里的 Markdown 笔记</p>
+      </div>
+      <div class="step">
+        <div class="num">2</div>
+        <h3>分块</h3>
+        <p>把长文切成适合检索的小块</p>
+      </div>
+      <div class="step">
+        <div class="num">3</div>
+        <h3>向量化入库</h3>
+        <p>中文向量模型转向量，存入本地向量库</p>
+      </div>
+      <div class="step">
+        <div class="num">4</div>
+        <h3>检索生成</h3>
+        <p>提问 → 检索最相关笔记 → 大模型带出处回答</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>技术栈</h2>
+    <div class="badges">
+      <span class="badge">框架 <b>LangChain</b></span>
+      <span class="badge">向量库 <b>Chroma</b></span>
+      <span class="badge">向量模型 <b>BGE-small-zh</b></span>
+      <span class="badge">大模型 <b>智谱 GLM-4-flash</b></span>
+      <span class="badge">界面 <b>Streamlit</b></span>
+    </div>
+  </section>
+
+  <section>
+    <h2>快速开始（3 步）</h2>
+    <div class="card">
+      <h3>第 1 步 · 配置密钥</h3>
+      <p>把 <code>config.py.example</code> 复制成 <code>config.py</code>，填入你的智谱 API Key。</p>
+      <h3 style="margin-top:16px;">第 2 步 · 安装依赖</h3>
+      <pre><code>pip install langchain langchain-community langchain-openai chromadb fastembed streamlit</code></pre>
+      <h3 style="margin-top:16px;">第 3 步 · 启动服务</h3>
+      <pre><code>streamlit run app.py</code></pre>
+      <p>浏览器自动打开 <code>http://localhost:8501</code>，即可对知识库提问。</p>
+    </div>
+  </section>
+
+  <footer>
+    个人知识库问答系统 · LangChain + Chroma + 智谱 GLM + Streamlit
+  </footer>
+
+</div>
+</body>
+</html>
