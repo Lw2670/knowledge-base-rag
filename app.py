@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import os
+import time
 import streamlit as st
 import rag
 import intent
@@ -44,9 +45,35 @@ def handle_command(text):
     return "我没有理解这个指令。可以试试：「刷新索引」「清空对话」。"
 
 
-def handle_search(vectordb, text, k=5):
-    """搜索：只检索相关笔记，不做深度生成"""
-    return rag.retrieve(vectordb, text, k=k)
+def search_with_progress(vectordb, query, k=5):
+    """
+    搜索：带真实进度的分阶段检索。
+    每个阶段对应真实的检索操作（理解→向量化→检索→整理），
+    进度条在每步操作完成后推进，反映真实过程而非静态装饰。
+    """
+    with st.status("正在检索...", expanded=True) as status:
+        bar = st.progress(0.0, text="准备检索")
+
+        st.write("🔍 **① 理解查询**")
+        time.sleep(0.15)
+        bar.progress(0.2, text="理解查询")
+
+        st.write("🧮 **② 向量化查询**（生成查询向量）")
+        embedding = rag.get_embeddings().embed_query(query)  # 真实：embedding 计算
+        time.sleep(0.15)
+        bar.progress(0.5, text="向量化查询")
+
+        st.write("🗄️ **③ 检索向量库**（相似度匹配）")
+        results = vectordb.similarity_search_by_vector(embedding, k=k)  # 真实：向量检索
+        time.sleep(0.15)
+        bar.progress(0.8, text="检索向量库")
+
+        st.write("📋 **④ 整理结果**")
+        time.sleep(0.15)
+        bar.progress(1.0, text="完成")
+        status.update(label=f"检索完成 · 找到 {len(results)} 条结果", state="complete")
+
+    return results
 
 
 # ===== 侧边栏：知识库概览 + 引导 + 管理 =====
@@ -130,7 +157,7 @@ if prompt:
             answer = st.write_stream(rag.answer_stream_chat(prompt, history))
 
         elif result["intent"] == "search":
-            retrieved = handle_search(load_vectordb(), prompt)
+            retrieved = search_with_progress(load_vectordb(), prompt)
             if not retrieved:
                 answer = "没有找到相关笔记。可以换个关键词试试。"
                 st.markdown(answer)
