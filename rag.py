@@ -163,6 +163,33 @@ def ask(vectordb, question, k=4, history=None):
     return answer.content, retrieved
 
 
+def chat_reply(text, history=None):
+    """闲聊/直接回复：不检索知识库，直接让 LLM 自然回应"""
+    history_text = _format_history(history)
+    prompt = (
+        "你是「个人知识库助手」。请自然、简洁地回应用户，语气友好。\n"
+        + (f"之前的对话：\n{history_text}\n\n" if history_text else "")
+        + f"用户：{text}\n"
+        + "助手："
+    )
+    answer = _make_llm(streaming=False).invoke(prompt)
+    return answer.content
+
+
+def answer_stream_chat(text, history=None):
+    """闲聊/直接回复（流式版），逐段 yield 文本"""
+    history_text = _format_history(history)
+    prompt = (
+        "你是「个人知识库助手」。请自然、简洁地回应用户，语气友好。\n"
+        + (f"之前的对话：\n{history_text}\n\n" if history_text else "")
+        + f"用户：{text}\n"
+        + "助手："
+    )
+    for chunk in _make_llm(streaming=True).stream(prompt):
+        if chunk.content:
+            yield chunk.content
+
+
 if __name__ == "__main__":
     if os.path.exists(CHROMA_DIR) and os.listdir(CHROMA_DIR):
         vectordb = Chroma(persist_directory=CHROMA_DIR, embedding_function=get_embeddings())
