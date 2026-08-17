@@ -11,6 +11,7 @@ from functools import lru_cache
 
 # 国内网络加速：HuggingFace 镜像 + 禁用 Xet 存储（避免 401 错误）
 os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
+os.environ.setdefault("HF_HUB_OFFLINE", "1")  # 模型本地缓存加载，避免联网超时
 os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
 
 from langchain_core.documents import Document
@@ -53,7 +54,7 @@ def load_docs():
 
 
 def get_embeddings():
-    return FastEmbedEmbeddings(model_name="BAAI/bge-small-zh-v1.5")
+    return FastEmbedEmbeddings(model_name="jinaai/jina-embeddings-v2-base-zh")
 
 
 def _split_docs_markdown(docs):
