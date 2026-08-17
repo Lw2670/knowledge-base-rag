@@ -690,11 +690,8 @@ if prompt:
                 if not retrieved:
                     st.write("　未在知识库中找到相关内容")
                 else:
-                    st.write(f"　检索到 {len(retrieved)} 条最相关内容：")
-                    for i, s in enumerate(retrieved, 1):
-                        src = os.path.basename(s.metadata.get("source", "未知"))
-                        snippet = s.page_content.replace("\n", " ").strip()[:40]
-                        st.write(f"　· [{i}] {src} — {snippet}...")
+                    # 只报数量，不列文件名/摘要——避免"引用来源"在回答前抢跑
+                    st.write(f"　检索到 {len(retrieved)} 条相关笔记，正在组织答案...")
                 status.update(label="检索完成，开始生成答案", state="running")
 
             if not retrieved:
