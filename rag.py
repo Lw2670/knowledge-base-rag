@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-个人知识库 RAG 问答系统（最小版）
-文档源：./kb 下的 .md 笔记
+个人知识库 RAG 问答系统
+文档源：KB_DIR 指向的 Markdown 知识库目录（默认 ./kb，可在 config.py 中覆盖）
 流程：文档加载 → 分块 → 向量化入库 → 检索生成
 """
 import os
 import re
 import time
+from functools import lru_cache
 
 # 国内网络加速：HuggingFace 镜像 + 禁用 Xet 存储（避免 401 错误）
 os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
@@ -21,7 +22,11 @@ from langchain_openai import ChatOpenAI
 
 from config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
 
-KB_DIR = r"./kb"     # 知识库目录
+try:
+    from config import KB_DIR   # 知识库目录（可在 config.py 中自定义，指向你的笔记）
+except ImportError:
+    KB_DIR = "./kb"             # 默认：项目内示例知识库目录
+
 CHROMA_DIR = "./chroma_db"       # 向量库持久化目录
 INDEX_STAMP = ".index_built_at"  # 索引构建时间戳文件（记录上次构建时间）
 CHUNK_SIZE = 500
@@ -120,14 +125,17 @@ def rebuild():
     return build_index(load_docs())
 
 
+@lru_cache(maxsize=4)
 def _make_llm(streaming=False):
-    """创建大模型实例"""
+    """创建大模型实例（按 streaming 参数缓存，避免重复构造；带超时与自动重试）"""
     return ChatOpenAI(
         model=LLM_MODEL,
         api_key=LLM_API_KEY,
         base_url=LLM_BASE_URL,
         temperature=0.3,
         streaming=streaming,
+        timeout=60,
+        max_retries=2,
     )
 
 
@@ -157,13 +165,13 @@ def build_prompt(question, context, history_text=""):
             "",
             "### [项目/步骤名]",
             "- **🔧 技术亮点**：[用了什么技术 + 独特选型 + 与普通实现的差异，如独立从0到1 / 端到端全链路 / 工程化闭环 / 模型可插拔 / 隐私脱敏 / 三级数据兜底等，**说具体**]",
-            "- **📊 量化成果**：[基于资料的具体数字：用户数/节省时间/规模/性能/错误率；**资料里没有数字就写事实/特征，不许编造数字**]",
+            "- **📊 量化成果**：[从资料里挖出可量化的信息（用户数/节省时间/规模/效果/时间线等）；资料确实没写数字，就用**具体事实**描述做了什么、效果如何，**不要写「无具体数字」这种空话**；严禁编造数字]",
             "- **💡 落地价值**：[解决什么痛点 / 谁受益 / 什么场景应用]",
             "",
             "**要求**：",
             "1. 整合提炼资料，先给整体结论再分项。",
             "2. 列举≥2项时结尾加「整体含金量」对比段（技术深度 / 业务价值 / 工程化 三维度）。",
-            "3. 每项控制在3-5行内（亮点/数据/价值各1-2行），精炼有信息密度。",
+            "3. 内容详实、有信息量，不要为了简短而遗漏要点。",
             "4. 禁止空话（「提升了能力」「证明了实力」替换成具体证据或删除）。",
         ]
     else:
@@ -178,7 +186,7 @@ def build_prompt(question, context, history_text=""):
             "2. **禁止硬套🔧/📊/💡三段式等固定框架**。用自然段落，必要时用小标题切分。",
             "3. 详略得当：定义/概念问题先给清晰定义+核心要素+实例/类比；概括/原因问题先结论后展开逻辑链。",
             "4. 严格基于资料，资料没有就说「未找到」。",
-            "5. **禁止编造数字、百分比、指标**（资料里没有就写「未具体说明」或描述事实）。",
+            "5. **数据以资料为准**：资料里有数字就用；没有就不硬编，用事实描述。",
             "6. 避免空洞表述（「提升了能力」「证明了实力」替换成具体证据或删除）。",
         ]
 
@@ -200,23 +208,27 @@ def _format_history(history):
     )
 
 
-def _postprocess(scored, top_n=4, margin=0.35, max_dist=1.0):
+def _postprocess(scored, top_n=6, margin=0.35, max_dist=1.0, max_per_source=4):
     """
-    检索结果后处理：按来源去重 → 绝对/相对阈值过滤 → 精选 top_n。
+    检索结果后处理：按来源限流 → 绝对/相对阈值过滤 → 精选 top_n。
     scored: [(Document, distance)]，distance 越小越相关。
     margin: 相对阈值，与最优结果的允许差距比例。
     max_dist: 绝对阈值，最优匹配仍超过此距离 → 视为无相关内容。
+    max_per_source: 每个来源文件最多保留几条（防单篇刷屏，同时允许有料文件多贡献）。
     """
     if not scored:
         return []
-    # 按来源去重：同一文件只保留最相关（distance 最小）的一条
-    best_by_source = {}
+    # 按来源限流：同一文件最多保留 max_per_source 条最相关 chunk
+    by_source = {}
     for doc, dist in scored:
         src = doc.metadata.get("source", "unknown")
-        if src not in best_by_source or dist < best_by_source[src][1]:
-            best_by_source[src] = (doc, dist)
+        by_source.setdefault(src, []).append((doc, dist))
+    keep = []
+    for src, items in by_source.items():
+        items.sort(key=lambda x: x[1])
+        keep.extend(items[:max_per_source])
     # 按距离排序
-    ranked = sorted(best_by_source.values(), key=lambda x: x[1])
+    ranked = sorted(keep, key=lambda x: x[1])
     # 绝对阈值：最优也过远 → 无相关内容
     if ranked[0][1] > max_dist:
         return []
@@ -226,13 +238,13 @@ def _postprocess(scored, top_n=4, margin=0.35, max_dist=1.0):
     return [d for d, _ in filtered[:top_n]]
 
 
-def retrieve(vectordb, question, k=8, top_n=4, margin=0.35, max_dist=1.0):
+def retrieve(vectordb, question, k=16, top_n=6, margin=0.35, max_dist=1.0):
     """检索：取更多候选 → 去重 → 相关性过滤 → 精选 top_n"""
     scored = vectordb.similarity_search_with_score(question, k=k)
     return _postprocess(scored, top_n, margin, max_dist)
 
 
-def retrieve_by_vector(vectordb, embedding, k=8, top_n=4, margin=0.35, max_dist=1.0):
+def retrieve_by_vector(vectordb, embedding, k=16, top_n=6, margin=0.35, max_dist=1.0):
     """按预计算向量检索（供搜索进度流程用，embedding 已算好）"""
     scored = vectordb.similarity_search_by_vector_with_relevance_scores(embedding, k=k)
     return _postprocess(scored, top_n, margin, max_dist)
@@ -256,10 +268,10 @@ def answer_stream(question, retrieved, history=None):
             yield chunk.content
 
 
-def ask(vectordb, question, k=4, history=None):
+def ask(vectordb, question, k=16, history=None):
     """完整流程（命令行用）：检索 + 生成，返回答案和来源"""
     query = build_query(question, history)
-    retrieved = retrieve(vectordb, query, k)
+    retrieved = retrieve(vectordb, query, k=k)
     context = "\n\n".join([d.page_content for d in retrieved])
     history_text = _format_history(history)
     answer = _make_llm(streaming=False).invoke(build_prompt(question, context, history_text))
