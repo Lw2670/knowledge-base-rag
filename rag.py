@@ -130,9 +130,42 @@ def _format_history(history):
     )
 
 
-def retrieve(vectordb, question, k=4):
-    """检索：返回最相关的 k 条笔记"""
-    return vectordb.similarity_search(question, k=k)
+def _postprocess(scored, top_n=4, margin=0.2, max_dist=1.1):
+    """
+    检索结果后处理：按来源去重 → 绝对/相对阈值过滤 → 精选 top_n。
+    scored: [(Document, distance)]，distance 越小越相关。
+    margin: 相对阈值，与最优结果的允许差距比例。
+    max_dist: 绝对阈值，最优匹配仍超过此距离 → 视为无相关内容。
+    """
+    if not scored:
+        return []
+    # 按来源去重：同一文件只保留最相关（distance 最小）的一条
+    best_by_source = {}
+    for doc, dist in scored:
+        src = doc.metadata.get("source", "unknown")
+        if src not in best_by_source or dist < best_by_source[src][1]:
+            best_by_source[src] = (doc, dist)
+    # 按距离排序
+    ranked = sorted(best_by_source.values(), key=lambda x: x[1])
+    # 绝对阈值：最优也过远 → 无相关内容
+    if ranked[0][1] > max_dist:
+        return []
+    # 相对阈值过滤：与最优差距不超过 margin 才保留（滤掉明显不相关的）
+    best = ranked[0][1]
+    filtered = [(d, s) for d, s in ranked if s <= best * (1 + margin)]
+    return [d for d, _ in filtered[:top_n]]
+
+
+def retrieve(vectordb, question, k=8, top_n=4, margin=0.2, max_dist=1.1):
+    """检索：取更多候选 → 去重 → 相关性过滤 → 精选 top_n"""
+    scored = vectordb.similarity_search_with_score(question, k=k)
+    return _postprocess(scored, top_n, margin, max_dist)
+
+
+def retrieve_by_vector(vectordb, embedding, k=8, top_n=4, margin=0.2, max_dist=1.1):
+    """按预计算向量检索（供搜索进度流程用，embedding 已算好）"""
+    scored = vectordb.similarity_search_by_vector_with_relevance_scores(embedding, k=k)
+    return _postprocess(scored, top_n, margin, max_dist)
 
 
 def build_query(question, history=None):

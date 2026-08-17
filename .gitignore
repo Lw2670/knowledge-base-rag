@@ -6,4 +6,5 @@ chroma_db/
 .streamlit/
 test_search.py
 test_both.py
+probe_scores.py
 search_selfcheck*.png

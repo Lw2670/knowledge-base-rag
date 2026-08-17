@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>个人知识库问答系统 · RAG</title>
+    <style id="theme-vars">
+:root {
+  /* Brand primary: teal */
+  --primary: #0f6e56;
+  --primary-foreground: #ffffff;
+  --primary-soft: #e1f5ee;
+  --primary-hover: #0d5d48;
+
+  /* Surfaces */
+  --background: #f7f9f8;
+  --foreground: #0f1f1c;
+  --card: #ffffff;
+  --card-foreground: #0f1f1c;
+  --popover: #ffffff;
+  --popover-foreground: #0f1f1c;
+
+  /* Neutral surfaces */
+  --muted: #f0f4f3;
+  --muted-foreground: #5f6f6b;
+
+  /* Utility */
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --border: #dfe7e4;
+  --input: #dfe7e4;
+  --ring: #0f6e56;
+
+  /* Radius */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+
+  /* Typography */
+  --font-sans: "Inter", "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+  --font-mono: "SF Mono", Consolas, "Courier New", monospace;
+
+  /* Spacing rhythm */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+  --s-7: 48px;
+  --s-8: 80px;
+  --s-9: 120px;
+
+  /* Shadows */
+  --shadow-1: 0 1px 2px rgba(15, 31, 28, 0.05), 0 1px 1px rgba(15, 31, 28, 0.03);
+  --shadow-2: 0 8px 24px -8px rgba(15, 31, 28, 0.16);
+  --shadow-3: 0 24px 60px -20px rgba(15, 31, 28, 0.22);
+
+  /* Semantic states */
+  --state-error: #dc2626;
+  --state-warning: #ca8a04;
+  --state-info: #16a34a;
+
+  /* Code blocks */
+  --code-bg: #0f172a;
+  --code-text: #a7f3d0;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-soft: var(--primary-soft);
+  --color-primary-hover: var(--primary-hover);
+  --color-code-bg: var(--code-bg);
+  --color-code-text: var(--code-text);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+}
+
+@layer base {
+  body {
+    font-family: var(--font-sans);
+    background-color: var(--background);
+    color: var(--foreground);
+    line-height: 1.6;
+  }
+}
+
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.1/dist/index.global.js"></script>
+    <script src="https://unpkg.com/lucide@1.8.0/dist/umd/lucide.min.js"></script>
+    <style type="text/tailwindcss">
+  @theme inline {
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+    --color-card: var(--card);
+    --color-card-foreground: var(--card-foreground);
+    --color-popover: var(--popover);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-primary: var(--primary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-primary-soft: var(--primary-soft);
+    --color-primary-hover: var(--primary-hover);
+    --color-code-bg: var(--code-bg);
+    --color-code-text: var(--code-text);
+    --color-muted: var(--muted);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-destructive: var(--destructive);
+    --color-destructive-foreground: var(--destructive-foreground);
+    --color-border: var(--border);
+    --color-input: var(--input);
+    --color-ring: var(--ring);
+    --radius-sm: var(--radius-sm);
+    --radius-md: var(--radius-md);
+    --radius-lg: var(--radius-lg);
+  }
+  @layer base {
+    body { background: var(--background); color: var(--foreground); }
+    td, th { @apply break-words; word-break: break-all; word-break: auto-phrase; }
+    th { @apply whitespace-nowrap; }
+  }
+    </style>
+    <style id="semantic-token-fallback">
+      .bg-background { background-color: var(--background); }
+      .text-background { color: var(--background); }
+      .border-background { border-color: var(--background); }
+      .ring-background { --tw-ring-color: var(--background); }
+      .bg-foreground { background-color: var(--foreground); }
+      .text-foreground { color: var(--foreground); }
+      .border-foreground { border-color: var(--foreground); }
+      .ring-foreground { --tw-ring-color: var(--foreground); }
+      .bg-card { background-color: var(--card); }
+      .text-card { color: var(--card); }
+      .border-card { border-color: var(--card); }
+      .ring-card { --tw-ring-color: var(--card); }
+      .bg-card-foreground { background-color: var(--card-foreground); }
+      .text-card-foreground { color: var(--card-foreground); }
+      .border-card-foreground { border-color: var(--card-foreground); }
+      .ring-card-foreground { --tw-ring-color: var(--card-foreground); }
+      .bg-popover { background-color: var(--popover); }
+      .text-popover { color: var(--popover); }
+      .border-popover { border-color: var(--popover); }
+      .ring-popover { --tw-ring-color: var(--popover); }
+      .bg-popover-foreground { background-color: var(--popover-foreground); }
+      .text-popover-foreground { color: var(--popover-foreground); }
+      .border-popover-foreground { border-color: var(--popover-foreground); }
+      .ring-popover-foreground { --tw-ring-color: var(--popover-foreground); }
+      .bg-primary { background-color: var(--primary); }
+      .text-primary { color: var(--primary); }
+      .border-primary { border-color: var(--primary); }
+      .ring-primary { --tw-ring-color: var(--primary); }
+      .bg-primary-foreground { background-color: var(--primary-foreground); }
+      .text-primary-foreground { color: var(--primary-foreground); }
+      .border-primary-foreground { border-color: var(--primary-foreground); }
+      .ring-primary-foreground { --tw-ring-color: var(--primary-foreground); }
+      .bg-primary-soft { background-color: var(--primary-soft); }
+      .text-primary-soft { color: var(--primary-soft); }
+      .border-primary-soft { border-color: var(--primary-soft); }
+      .ring-primary-soft { --tw-ring-color: var(--primary-soft); }
+      .bg-primary-hover { background-color: var(--primary-hover); }
+      .text-primary-hover { color: var(--primary-hover); }
+      .border-primary-hover { border-color: var(--primary-hover); }
+      .ring-primary-hover { --tw-ring-color: var(--primary-hover); }
+      .bg-code-bg { background-color: var(--code-bg); }
+      .text-code-bg { color: var(--code-bg); }
+      .border-code-bg { border-color: var(--code-bg); }
+      .ring-code-bg { --tw-ring-color: var(--code-bg); }
+      .bg-code-text { background-color: var(--code-text); }
+      .text-code-text { color: var(--code-text); }
+      .border-code-text { border-color: var(--code-text); }
+      .ring-code-text { --tw-ring-color: var(--code-text); }
+      .bg-muted { background-color: var(--muted); }
+      .text-muted { color: var(--muted); }
+      .border-muted { border-color: var(--muted); }
+      .ring-muted { --tw-ring-color: var(--muted); }
+      .bg-muted-foreground { background-color: var(--muted-foreground); }
+      .text-muted-foreground { color: var(--muted-foreground); }
+      .border-muted-foreground { border-color: var(--muted-foreground); }
+      .ring-muted-foreground { --tw-ring-color: var(--muted-foreground); }
+      .bg-destructive { background-color: var(--destructive); }
+      .text-destructive { color: var(--destructive); }
+      .border-destructive { border-color: var(--destructive); }
+      .ring-destructive { --tw-ring-color: var(--destructive); }
+      .bg-destructive-foreground { background-color: var(--destructive-foreground); }
+      .text-destructive-foreground { color: var(--destructive-foreground); }
+      .border-destructive-foreground { border-color: var(--destructive-foreground); }
+      .ring-destructive-foreground { --tw-ring-color: var(--destructive-foreground); }
+      .bg-border { background-color: var(--border); }
+      .text-border { color: var(--border); }
+      .border-border { border-color: var(--border); }
+      .ring-border { --tw-ring-color: var(--border); }
+      .bg-input { background-color: var(--input); }
+      .text-input { color: var(--input); }
+      .border-input { border-color: var(--input); }
+      .ring-input { --tw-ring-color: var(--input); }
+      .bg-ring { background-color: var(--ring); }
+      .text-ring { color: var(--ring); }
+      .border-ring { border-color: var(--ring); }
+      .ring-ring { --tw-ring-color: var(--ring); }
+    </style>
+    <style>
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      [data-icon] {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        -webkit-mask-size: contain;
+        mask-size: contain;
+        -webkit-mask-repeat: no-repeat;
+        mask-repeat: no-repeat;
+        -webkit-mask-position: center;
+        mask-position: center;
+        background-color: currentColor;
+      }
+    </style>
+</head>
+<body class="antialiased">
+
+  <a href="#main" class="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:bg-primary focus:text-primary-foreground focus:px-3 focus:py-2 focus:rounded-md">跳到主要内容</a>
+
+  <header class="border-b border-border bg-card/80 backdrop-blur-sm">
+    <div class="mx-auto max-w-6xl px-6 h-16 flex items-center justify-between">
+      <div class="flex items-center gap-2.5">
+        <span class="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+          <i data-lucide="book-open" class="h-5 w-5"></i>
+        </span>
+        <span class="text-lg font-semibold tracking-tight text-foreground">个人知识库</span>
+      </div>
+      <nav class="flex items-center gap-6">
+        <a href="#workflow" class="hidden text-sm font-medium text-muted-foreground hover:text-foreground sm:block">工作流程</a>
+        <a href="#stack" class="hidden text-sm font-medium text-muted-foreground hover:text-foreground sm:block">技术栈</a>
+        <a href="#start" class="hidden text-sm font-medium text-muted-foreground hover:text-foreground sm:block">快速开始</a>
+        <a href="https://github.com/Lw2670/knowledge-base-rag" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground hover:border-primary hover:text-primary transition-colors">
+          <i data-lucide="github" class="h-4 w-4"></i>
+          <span>GitHub</span>
+        </a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="relative overflow-hidden bg-background">
+      <div class="pointer-events-none absolute inset-0 opacity-40" aria-hidden="true">
+        <div class="hero-glow absolute -top-1/2 left-1/2 h-[120%] w-[120%] -translate-x-1/2 rounded-full"></div>
+      </div>
+
+      <div class="relative mx-auto max-w-6xl px-6 py-20 sm:py-28 lg:py-36">
+        <div class="mx-auto max-w-3xl text-center">
+          <h1 class="text-4xl font-semibold tracking-tight text-foreground sm:text-5xl lg:text-6xl" style="text-wrap: balance;">个人知识库问答</h1>
+          <p class="mt-6 text-lg leading-relaxed text-muted-foreground sm:text-xl" style="text-wrap: balance;">基于 RAG 技术，把你的 Markdown 笔记变成可对话的第二大脑。中文向量检索 + 大模型生成，答案带出处，不凭空编造。</p>
+          <div class="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
+            <a href="http://localhost:8501" target="_blank" class="inline-flex items-center gap-2 rounded-lg bg-primary px-6 py-3 text-base font-semibold text-primary-foreground shadow-sm hover:bg-primary-hover transition-all hover:-translate-y-0.5">
+              <span>进入问答系统</span>
+              <i data-lucide="arrow-right" class="h-4 w-4"></i>
+            </a>
+            <a href="https://github.com/Lw2670/knowledge-base-rag" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-6 py-3 text-base font-semibold text-foreground hover:border-primary hover:text-primary transition-colors">
+              <i data-lucide="github" class="h-4 w-4"></i>
+              <span>查看代码</span>
+            </a>
+          </div>
+          <p class="mt-4 text-sm text-muted-foreground">启动服务后访问 <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">localhost:8501</code></p>
+        </div>
+      </div>
+    </section>
+
+    <section id="workflow" class="bg-muted/50 py-16 sm:py-24">
+      <div class="mx-auto max-w-6xl px-6">
+        <div class="mx-auto max-w-2xl text-center">
+          <h2 class="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">它是怎么工作的</h2>
+          <p class="mt-3 text-muted-foreground">四步链路，让笔记从静态文件变成可检索、可对话的知识。</p>
+        </div>
+
+        <div class="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          <div class="relative rounded-xl border border-border bg-card p-6 shadow-sm transition-all hover:-translate-y-1 hover:shadow-md">
+            <div class="mb-4 inline-flex h-10 w-10 items-center justify-center rounded-lg bg-primary-soft text-primary">
+              <i data-lucide="file-text" class="h-5 w-5"></i>
+            </div>
+            <h3 class="text-base font-semibold text-foreground">文档加载</h3>
+            <p class="mt-1.5 text-sm leading-relaxed text-muted-foreground">读取知识库里的 Markdown 笔记，保留原文结构。</p>
+          </div>
+          <div class="relative rounded-xl border border-border bg-card p-6 shadow-sm transition-all hover:-translate-y-1 hover:shadow-md">
+            <div class="mb-4 inline-flex h-10 w-10 items-center justify-center rounded-lg bg-primary-soft text-primary">
+              <i data-lucide="scissors" class="h-5 w-5"></i>
+            </div>
+            <h3 class="text-base font-semibold text-foreground">智能分块</h3>
+            <p class="mt-1.5 text-sm leading-relaxed text-muted-foreground">把长文切分成适合检索的小块，兼顾语义完整。</p>
+          </div>
+          <div class="relative rounded-xl border border-border bg-card p-6 shadow-sm transition-all hover:-translate-y-1 hover:shadow-md">
+            <div class="mb-4 inline-flex h-10 w-10 items-center justify-center rounded-lg bg-primary-soft text-primary">
+              <i data-lucide="database" class="h-5 w-5"></i>
+            </div>
+            <h3 class="text-base font-semibold text-foreground">向量化入库</h3>
+            <p class="mt-1.5 text-sm leading-relaxed text-muted-foreground">中文向量模型转成向量，存入本地 Chroma 库。</p>
+          </div>
+          <div class="relative rounded-xl border border-border bg-card p-6 shadow-sm transition-all hover:-translate-y-1 hover:shadow-md">
+            <div class="mb-4 inline-flex h-10 w-10 items-center justify-center rounded-lg bg-primary-soft text-primary">
+              <i data-lucide="message-square" class="h-5 w-5"></i>
+            </div>
+            <h3 class="text-base font-semibold text-foreground">检索生成</h3>
+            <p class="mt-1.5 text-sm leading-relaxed text-muted-foreground">提问 → 检索最相关笔记 → 大模型带出处回答。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="stack" class="bg-background py-16 sm:py-24">
+      <div class="mx-auto max-w-6xl px-6">
+        <div class="grid gap-12 lg:grid-cols-12 lg:items-start">
+          <div class="lg:col-span-4">
+            <h2 class="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">技术栈</h2>
+            <p class="mt-3 text-muted-foreground">全部开源或可免费使用，本地运行，数据不外流。</p>
+          </div>
+          <div class="lg:col-span-8">
+            <div class="flex flex-wrap gap-3">
+              <span class="inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-sm font-medium text-foreground">
+                <i data-lucide="box" class="h-4 w-4 text-primary"></i> LangChain
+              </span>
+              <span class="inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-sm font-medium text-foreground">
+                <i data-lucide="database" class="h-4 w-4 text-primary"></i> Chroma
+              </span>
+              <span class="inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-sm font-medium text-foreground">
+                <i data-lucide="languages" class="h-4 w-4 text-primary"></i> BGE-small-zh
+              </span>
+              <span class="inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-sm font-medium text-foreground">
+                <i data-lucide="sparkles" class="h-4 w-4 text-primary"></i> 智谱 GLM-4-flash
+              </span>
+              <span class="inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-sm font-medium text-foreground">
+                <i data-lucide="layout-template" class="h-4 w-4 text-primary"></i> Streamlit
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="start" class="bg-muted/50 py-16 sm:py-24">
+      <div class="mx-auto max-w-6xl px-6">
+        <div class="mx-auto max-w-3xl text-center">
+          <h2 class="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">快速开始</h2>
+          <p class="mt-3 text-muted-foreground">三步即可运行自己的知识库问答服务。</p>
+        </div>
+
+        <div class="mt-12 rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-10">
+          <ol class="space-y-8">
+            <li class="relative pl-10">
+              <span class="absolute left-0 top-0 flex h-7 w-7 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">1</span>
+              <h3 class="text-base font-semibold text-foreground">配置密钥</h3>
+              <p class="mt-1 text-sm text-muted-foreground">把 <code class="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground">config.py.example</code> 复制为 <code class="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground">config.py</code>，填入智谱 API Key。</p>
+            </li>
+            <li class="relative pl-10">
+              <span class="absolute left-0 top-0 flex h-7 w-7 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">2</span>
+              <h3 class="text-base font-semibold text-foreground">安装依赖</h3>
+              <div class="mt-3 overflow-hidden rounded-lg bg-code-bg">
+                <div class="flex items-center gap-1.5 border-b border-white/10 px-4 py-2">
+                  <span class="h-2.5 w-2.5 rounded-full" style="background-color: var(--state-error); opacity: 0.8;"></span>
+                  <span class="h-2.5 w-2.5 rounded-full" style="background-color: var(--state-warning); opacity: 0.8;"></span>
+                  <span class="h-2.5 w-2.5 rounded-full" style="background-color: var(--state-info); opacity: 0.8;"></span>
+                </div>
+                <pre class="overflow-x-auto p-4 text-sm leading-relaxed"><code class="font-mono text-code-text">pip install langchain langchain-community langchain-openai chromadb fastembed streamlit</code></pre>
+              </div>
+            </li>
+            <li class="relative pl-10">
+              <span class="absolute left-0 top-0 flex h-7 w-7 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">3</span>
+              <h3 class="text-base font-semibold text-foreground">启动服务</h3>
+              <div class="mt-3 overflow-hidden rounded-lg bg-code-bg">
+                <div class="flex items-center gap-1.5 border-b border-white/10 px-4 py-2">
+                  <span class="h-2.5 w-2.5 rounded-full" style="background-color: var(--state-error); opacity: 0.8;"></span>
+                  <span class="h-2.5 w-2.5 rounded-full" style="background-color: var(--state-warning); opacity: 0.8;"></span>
+                  <span class="h-2.5 w-2.5 rounded-full" style="background-color: var(--state-info); opacity: 0.8;"></span>
+                </div>
+                <pre class="overflow-x-auto p-4 text-sm leading-relaxed"><code class="font-mono text-code-text">streamlit run app.py</code></pre>
+              </div>
+              <p class="mt-3 text-sm text-muted-foreground">浏览器自动打开 <code class="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground">http://localhost:8501</code>，即可对知识库提问。</p>
+            </li>
+          </ol>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="border-t border-border bg-card py-10">
+    <div class="mx-auto max-w-6xl px-6 flex flex-col items-center justify-between gap-4 sm:flex-row">
+      <p class="text-sm text-muted-foreground">个人知识库问答系统 · LangChain + Chroma + 智谱 GLM + Streamlit</p>
+      <a href="https://github.com/Lw2670/knowledge-base-rag" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
+        <i data-lucide="github" class="h-4 w-4"></i>
+        <span>Star on GitHub</span>
+      </a>
+    </div>
+  </footer>
+
+  <style>
+    .hero-glow {
+      background: radial-gradient(circle at center, var(--primary-soft) 0%, transparent 60%);
+      filter: blur(60px);
+    }
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+    code {
+      font-family: var(--font-mono);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+
+  <script>lucide.createIcons();</script>
+</body>
+</html>
