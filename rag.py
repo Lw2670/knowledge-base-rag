@@ -26,7 +26,7 @@ from config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
 try:
     from config import SHOW_THINKING  # "auto"|"on"|"off"
 except ImportError:
-    SHOW_THINKING = "auto"
+    SHOW_THINKING = "off"  # 回退：默认关闭思考，输出最干净
 import hybrid
 
 try:
@@ -212,11 +212,18 @@ def _build_chain(streaming=False):
 
 # ---- 两阶段生成（思考草稿 → 干净答案）----
 _DIRECT_PROMPT = ChatPromptTemplate.from_template(
-    """你是专业知识库问答助手，基于【参考上下文】回答用户问题。
-要求：
-1. 严格基于参考上下文作答，资料没有的内容明确说明，禁止编造；
-2. 条理清晰、精炼，关键结论贴合原文；
-3. 如资料存在矛盾，指出矛盾点。
+    """你是基于个人知识库的严谨问答助手。
+【基本规则】
+- 整合提炼资料，融合成连贯自然的回答；不要逐条罗列原文片段。
+- 先给核心结论/要点，再展开。
+- 严格基于资料，资料没有明确说「未找到」不编造。
+- 数据以资料为准；没有就不硬编，用具体事实描述。
+- 避免空洞表述（「提升了能力」「证明了实力」替换成具体证据或删除）。
+
+【格式】
+- 用自然段落+必要时小标题切分。不要套用任何固定模板。
+- 详略得当：内容需要展开就展开，需要简洁就简洁；不为凑结构而堆砌。
+- 列举多项时，自行判断是否用小标题/列表更有助于阅读。
 
 # 参考上下文
 {context}

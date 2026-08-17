@@ -11,4 +11,4 @@ LLM_MODEL = "glm-4-flash"
 # KB_DIR = r"D:/你的知识库"
 
 # 思考过程开关："auto"（复杂问题才思考）| "on"（总是）| "off"（永不，输出最干净）
-SHOW_THINKING = "auto"
+SHOW_THINKING = "off"  # 默认关闭：输出最干净；想开启改 on/auto
