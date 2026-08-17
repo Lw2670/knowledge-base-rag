@@ -702,7 +702,12 @@ if prompt:
                 st.markdown(f'<div class="chat-assistant">{html.escape(answer)}</div>', unsafe_allow_html=True)
             else:
                 try:
-                    answer = st.write_stream(rag.answer_stream(prompt, retrieved, history))
+                    answer_placeholder = st.empty()
+                    streamed = ""
+                    for chunk in rag.answer_stream(prompt, retrieved, history):
+                        streamed += chunk
+                        answer_placeholder.markdown(streamed)
+                    answer = streamed
                 except Exception as e:
                     answer = f"生成答案时出错了：{e}"
                     st.error(answer)
