@@ -5,12 +5,14 @@
 流程：文档加载 → 分块 → 向量化入库 → 检索生成
 """
 import os
+import re
 import time
 
 # 国内网络加速：HuggingFace 镜像 + 禁用 Xet 存储（避免 401 错误）
 os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
 os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
 
+from langchain_core.documents import Document
 from langchain_community.document_loaders import TextLoader
 from langchain_community.embeddings import FastEmbedEmbeddings
 from langchain_community.vectorstores import Chroma
@@ -23,7 +25,7 @@ KB_DIR = r"./kb"     # 知识库目录
 CHROMA_DIR = "./chroma_db"       # 向量库持久化目录
 INDEX_STAMP = ".index_built_at"  # 索引构建时间戳文件（记录上次构建时间）
 CHUNK_SIZE = 500
-CHUNK_OVERLAP = 50
+CHUNK_OVERLAP = 80
 
 
 def load_docs():
@@ -48,10 +50,29 @@ def get_embeddings():
     return FastEmbedEmbeddings(model_name="BAAI/bge-small-zh-v1.5")
 
 
+def _split_docs_markdown(docs):
+    """按 Markdown 标题结构分块：先按标题切段（保留标题作上下文），段内过长再按字符切块"""
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
+    new_docs = []
+    for doc in docs:
+        src = doc.metadata.get("source", "unknown")
+        # 在 `# / ## / ### ` 标题前切段，标题保留在段首
+        sections = re.split(r"(?m)^(?=#{1,3} )", doc.page_content)
+        for sec in sections:
+            sec = sec.strip()
+            if not sec:
+                continue
+            sec_doc = Document(page_content=sec, metadata={"source": src})
+            if len(sec) <= CHUNK_SIZE * 1.3:
+                new_docs.append(sec_doc)
+            else:
+                new_docs.extend(text_splitter.split_documents([sec_doc]))
+    return new_docs
+
+
 def build_index(docs):
-    """2-3. 分块 + 向量化入库"""
-    splitter = RecursiveCharacterTextSplitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
-    chunks = splitter.split_documents(docs)
+    """2-3. 分块（Markdown 结构感知）+ 向量化入库"""
+    chunks = _split_docs_markdown(docs)
     print(f"切分 {len(chunks)} 个文本块")
     vectordb = Chroma.from_documents(chunks, get_embeddings(), persist_directory=CHROMA_DIR)
     print("向量库构建完成")
@@ -111,7 +132,13 @@ def _make_llm(streaming=False):
 
 
 def build_prompt(question, context, history_text=""):
-    parts = ["请根据以下资料回答问题。如果资料中没有答案，就说不知道，不要编造。"]
+    parts = [
+        "你是一个严谨的个人知识库问答助手。请基于下面的「资料」回答用户问题，严格遵守以下规则：",
+        "1. 先整合提炼资料中的相关信息（去重、合并、补全细节），再组织答案，不要逐条罗列原文片段。",
+        "2. 答案结构：先给出结论，再展开具体内容（可用分点/小标题）。",
+        "3. 严格基于资料回答；资料中没有的信息，明确说明「知识库中未找到相关信息」，不要编造。",
+        "4. 如资料之间存在矛盾，指出矛盾并说明各自依据。",
+    ]
     if history_text:
         parts.append(f"之前的对话：\n{history_text}")
     parts.append(f"资料：\n{context}")
@@ -130,7 +157,7 @@ def _format_history(history):
     )
 
 
-def _postprocess(scored, top_n=4, margin=0.2, max_dist=1.1):
+def _postprocess(scored, top_n=4, margin=0.35, max_dist=1.0):
     """
     检索结果后处理：按来源去重 → 绝对/相对阈值过滤 → 精选 top_n。
     scored: [(Document, distance)]，distance 越小越相关。
@@ -156,13 +183,13 @@ def _postprocess(scored, top_n=4, margin=0.2, max_dist=1.1):
     return [d for d, _ in filtered[:top_n]]
 
 
-def retrieve(vectordb, question, k=8, top_n=4, margin=0.2, max_dist=1.1):
+def retrieve(vectordb, question, k=8, top_n=4, margin=0.35, max_dist=1.0):
     """检索：取更多候选 → 去重 → 相关性过滤 → 精选 top_n"""
     scored = vectordb.similarity_search_with_score(question, k=k)
     return _postprocess(scored, top_n, margin, max_dist)
 
 
-def retrieve_by_vector(vectordb, embedding, k=8, top_n=4, margin=0.2, max_dist=1.1):
+def retrieve_by_vector(vectordb, embedding, k=8, top_n=4, margin=0.35, max_dist=1.0):
     """按预计算向量检索（供搜索进度流程用，embedding 已算好）"""
     scored = vectordb.similarity_search_by_vector_with_relevance_scores(embedding, k=k)
     return _postprocess(scored, top_n, margin, max_dist)
