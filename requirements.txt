@@ -17,3 +17,5 @@ fastembed==0.8.0
 
 # ---- 网页界面 ----
 streamlit==1.61.1
+rank_bm25
+jieba

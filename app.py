@@ -511,7 +511,7 @@ def handle_command(text):
 def search_with_progress(vectordb, query, k=8, top_n=5):
     """带阶段反馈的向量检索（检索更多 → 去重 → 相关性过滤 → 精选）"""
     embedding = rag.get_embeddings().embed_query(query)
-    results = rag.retrieve_by_vector(vectordb, embedding, k=k, top_n=top_n)
+    results = rag.retrieve_by_vector(vectordb, embedding, query, k=k, top_n=top_n)
     return results
 
 

@@ -21,6 +21,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_openai import ChatOpenAI
 
 from config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
+import hybrid
 
 try:
     from config import KB_DIR   # 知识库目录（可在 config.py 中自定义，指向你的笔记）
@@ -79,6 +80,7 @@ def build_index(docs):
     """2-3. 分块（Markdown 结构感知）+ 向量化入库"""
     chunks = _split_docs_markdown(docs)
     print(f"切分 {len(chunks)} 个文本块")
+    hybrid.build_bm25(chunks)  # 同步构建 BM25 关键词索引
     vectordb = Chroma.from_documents(chunks, get_embeddings(), persist_directory=CHROMA_DIR)
     print("向量库构建完成")
     mark_built()
@@ -204,15 +206,17 @@ def _postprocess(scored, top_n=6, margin=0.35, max_dist=1.0, max_per_source=4):
 
 
 def retrieve(vectordb, question, k=16, top_n=6, margin=0.35, max_dist=1.0):
-    """检索：取更多候选 → 去重 → 相关性过滤 → 精选 top_n"""
+    """混合检索：向量 + BM25 关键词 → RRF 融合 → 去重过滤 → 精选 top_n"""
     scored = vectordb.similarity_search_with_score(question, k=k)
-    return _postprocess(scored, top_n, margin, max_dist)
+    bm25_docs = hybrid.bm25_retrieve(question, k=k)
+    return hybrid.fuse_and_select(scored, bm25_docs, top_n, margin, max_dist)
 
 
-def retrieve_by_vector(vectordb, embedding, k=16, top_n=6, margin=0.35, max_dist=1.0):
-    """按预计算向量检索（供搜索进度流程用，embedding 已算好）"""
+def retrieve_by_vector(vectordb, embedding, query_text, k=16, top_n=6, margin=0.35, max_dist=1.0):
+    """按预计算向量检索（供搜索进度流程用，embedding 已算好）+ BM25 融合"""
     scored = vectordb.similarity_search_by_vector_with_relevance_scores(embedding, k=k)
-    return _postprocess(scored, top_n, margin, max_dist)
+    bm25_docs = hybrid.bm25_retrieve(query_text, k=k)
+    return hybrid.fuse_and_select(scored, bm25_docs, top_n, margin, max_dist)
 
 
 def build_query(question, history=None):
