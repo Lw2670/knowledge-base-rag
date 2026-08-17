@@ -523,38 +523,6 @@ def render_assistant_container():
     """返回一个可写入 assistant 气泡的占位，调用方继续在其内部写入内容"""
     return st.markdown('<div class="chat-assistant">', unsafe_allow_html=True)
 
-def split_answer_sections(text):
-    """把模型输出按【思考过程】【最终答案】【来源引用】切分为三段"""
-    import re
-    parts = re.split(r"(【思考过程】|【最终答案】|【来源引用】|【资料来源引用】)", text)
-    sections = {"思考过程": "", "最终答案": "", "来源引用": ""}
-    for i in range(1, len(parts) - 1, 2):
-        key = parts[i].strip("【】")
-        val = parts[i + 1].strip() if i + 1 < len(parts) else ""
-        if "思考" in key:
-            sections["思考过程"] = (sections["思考过程"] + "\n" + val).strip()
-        elif "答案" in key or "最终" in key:
-            sections["最终答案"] = (sections["最终答案"] + "\n" + val).strip()
-        elif "来源" in key or "引用" in key:
-            sections["来源引用"] = (sections["来源引用"] + "\n" + val).strip()
-    return sections
-
-
-def render_structured_answer(text):
-    """渲染三段式回答：🧠思考过程(可折叠) → 最终答案 → 📚来源引用"""
-    sec = split_answer_sections(text)
-    if not any(sec.values()):
-        # 模型没按格式输出，原样展示
-        st.markdown(f'<div class="chat-assistant">{html.escape(text)}</div>', unsafe_allow_html=True)
-        return
-    if sec["思考过程"]:
-        with st.expander("🧠 思考过程（模型推理步骤）", expanded=True):
-            st.markdown(sec["思考过程"])
-    if sec["最终答案"]:
-        st.markdown(sec["最终答案"])
-    if sec["来源引用"]:
-        st.markdown(f'<div class="source-list">📚 {html.escape(sec["来源引用"])}</div>', unsafe_allow_html=True)
-
 
 # ---------------------------------------------------------------------------
 # Session state
@@ -726,19 +694,20 @@ if prompt:
                 st.markdown(f'<div class="chat-assistant">{html.escape(answer)}</div>', unsafe_allow_html=True)
             else:
                 try:
-                    # 流式预览（实时滚动），结束后切成三段式可视化
-                    ph = st.empty()
-                    chunks = []
-                    for chunk in rag.answer_stream(prompt, retrieved, history):
-                        chunks.append(chunk)
-                        ph.markdown("".join(chunks))
-                    answer = "".join(chunks)
-                    ph.empty()
+                    answer = st.write_stream(rag.answer_stream(prompt, retrieved, history))
                 except Exception as e:
                     answer = f"生成答案时出错了：{e}"
                     st.error(answer)
 
-                render_structured_answer(answer)
+                st.markdown("**引用来源**")
+                source_lines = "".join(
+                    f'<div class="source-line">[{i}] {html.escape(os.path.basename(s.metadata.get("source", "未知")))} — {html.escape(" ".join(s.page_content.split())[:60])}</div>'
+                    for i, s in enumerate(retrieved, 1)
+                )
+                st.markdown(
+                    f'<div class="source-list">{source_lines}</div>',
+                    unsafe_allow_html=True,
+                )
 
         # Persist assistant turn
         st.session_state.messages.append({"role": "assistant", "content": answer})
