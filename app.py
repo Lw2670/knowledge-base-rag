@@ -180,21 +180,19 @@ if prompt:
             vectordb = load_vectordb()
             query = rag.build_query(prompt, history)
 
-            with st.status("智能体思考中...", expanded=True) as status:
-                st.write("🔍 **① 理解问题**")
-                st.write(f"　你的提问：{prompt}")
-                st.write("📚 **② 检索相关笔记**")
-                retrieved = rag.retrieve(vectordb, query, k=4)
-                if not retrieved:
-                    st.write("　未在知识库中找到相关内容")
-                else:
-                    st.write(f"　检索到 {len(retrieved)} 条最相关内容：")
-                    for i, s in enumerate(retrieved, 1):
-                        src = os.path.basename(s.metadata.get("source", "未知"))
-                        snippet = s.page_content.replace("\n", " ").strip()[:40]
-                        st.write(f"　· [{i}] {src} — {snippet}...")
-                st.write("🤖 **③ 生成答案**")
-                status.update(label=f"思考完成 · 检索到 {len(retrieved)} 条笔记", state="complete")
+            # 思考过程（用 st.write 常显，不用 st.status 避免完成后折叠隐藏步骤）
+            st.write("🔍 **① 理解问题**")
+            st.write("📚 **② 检索相关笔记**")
+            retrieved = rag.retrieve(vectordb, query, k=4)
+            if not retrieved:
+                st.write("　未在知识库中找到相关内容")
+            else:
+                st.write(f"　检索到 {len(retrieved)} 条最相关内容：")
+                for i, s in enumerate(retrieved, 1):
+                    src = os.path.basename(s.metadata.get("source", "未知"))
+                    snippet = s.page_content.replace("\n", " ").strip()[:40]
+                    st.write(f"　· [{i}] {src} — {snippet}...")
+            st.write("🤖 **③ 生成答案**")
 
             if not retrieved:
                 answer = f"抱歉，我在知识库中没有找到与「{prompt}」相关的内容。\n\n你可以换个问法，或者先在知识库里补充相关笔记。"
