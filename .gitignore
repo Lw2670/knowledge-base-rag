@@ -8,3 +8,11 @@ test_search.py
 test_both.py
 probe_scores.py
 search_selfcheck*.png
+# 生成物（重建索引时自动生成，不入库）
+bm25_index.pkl
+# 含本机绝对路径的设计/验证产物（隐私，不入库）
+validation-report.json
+runtime-orchestration-summary.json
+*.design
+# 模型下载临时目录
+models_cache/

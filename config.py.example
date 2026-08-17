@@ -6,3 +6,6 @@
 LLM_API_KEY = "在这里填入你的智谱 API Key"
 LLM_BASE_URL = "https://open.bigmodel.cn/api/paas/v4/"
 LLM_MODEL = "glm-4-flash"
+
+# 知识库目录（可选）：默认 ./kb（项目内示例）；改成你自己的笔记仓库即可
+# KB_DIR = r"D:/你的知识库"
