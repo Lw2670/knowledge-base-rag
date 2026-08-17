@@ -23,6 +23,10 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_openai import ChatOpenAI
 
 from config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
+try:
+    from config import SHOW_THINKING  # "auto"|"on"|"off"
+except ImportError:
+    SHOW_THINKING = "auto"
 import hybrid
 
 try:
@@ -206,6 +210,100 @@ def _build_chain(streaming=False):
         | _make_llm(streaming=streaming)
     )
 
+# ---- 两阶段生成（思考草稿 → 干净答案）----
+_DIRECT_PROMPT = ChatPromptTemplate.from_template(
+    """你是专业知识库问答助手，基于【参考上下文】回答用户问题。
+要求：
+1. 严格基于参考上下文作答，资料没有的内容明确说明，禁止编造；
+2. 条理清晰、精炼，关键结论贴合原文；
+3. 如资料存在矛盾，指出矛盾点。
+
+# 参考上下文
+{context}
+
+# 用户问题
+{question}"""
+)
+
+_THINK_PROMPT = ChatPromptTemplate.from_template(
+    """你是知识库问答助手。请针对下面的问题做**内部推理**，输出简要思考草稿。
+要求：控制在 150 字内，按以下结构（不要输出最终答案）：
+1. 用户诉求拆解
+2. 从参考上下文定位到的关键信息
+3. 可信度判断（资料是否充足 / 有无矛盾 / 有无缺漏）
+4. 作答策略
+
+# 参考上下文
+{context}
+
+# 用户问题
+{question}"""
+)
+
+_ANSWER_PROMPT = ChatPromptTemplate.from_template(
+    """你是专业知识库问答助手。基于【思考草稿】和【参考上下文】，给出**最终答案**。
+要求：
+1. 只输出最终答案正文，**不要输出思考过程**；
+2. 严格基于参考上下文作答，资料没有的内容明确说明，禁止编造；
+3. 条理清晰、精炼，关键结论贴合原文。
+
+# 思考草稿
+{thinking}
+
+# 参考上下文
+{context}
+
+# 用户问题
+{question}"""
+)
+
+_COMPLEX_KW = ["为什么", "分析", "对比", "方案", "总结", "如何", "怎么", "推荐", "利弊", "区别", "评估", "规划", "优化"]
+
+
+def _should_think(question):
+    """根据开关判断是否启用思考阶段：off 永不 / on 总是 / auto 按复杂度"""
+    if SHOW_THINKING == "off":
+        return False
+    if SHOW_THINKING == "on":
+        return True
+    return len(question) > 20 or any(k in question for k in _COMPLEX_KW)
+
+
+def _think_draft(question, context, history_text=""):
+    """Pass1：内部思考草稿（短、独立于最终答案生成，只作展示与依据）"""
+    llm = _make_llm(streaming=False)
+    llm.temperature = 0.3   # 思考段稍高温度，推理更充分
+    llm.max_tokens = 200    # 限制草稿长度，防止占满上下文
+    resp = llm.invoke(_THINK_PROMPT.format_messages(question=question, context=context))
+    return resp.content.strip()
+
+
+def _build_direct_chain(streaming=False):
+    """直接模式链：无思考，单次干净回答"""
+    return (
+        {
+            "context": lambda x: x["context"],
+            "question": lambda x: x["question"],
+            "history_text": lambda x: x.get("history_text", ""),
+        }
+        | _DIRECT_PROMPT
+        | _make_llm(streaming=streaming)
+    )
+
+
+def _build_answer_chain(streaming=False):
+    """Pass2 链：思考草稿 + 上下文 → 干净最终答案"""
+    return (
+        {
+            "context": lambda x: x["context"],
+            "question": lambda x: x["question"],
+            "thinking": lambda x: x.get("thinking", ""),
+            "history_text": lambda x: x.get("history_text", ""),
+        }
+        | _ANSWER_PROMPT
+        | _make_llm(streaming=streaming)
+    )
+
 
 def _format_history(history):
     """把会话历史转成文本（最近 4 条），加隔离标记防模型模仿历史中的旧格式"""
@@ -270,12 +368,28 @@ def build_query(question, history=None):
 
 
 def answer_stream(question, retrieved, history=None):
-    """流式生成答案（LCEL 链），逐段 yield 文本片段"""
+    """流式生成：思考开关打开则先出思考草稿再出干净答案，关闭则单次直接回答"""
     context = _format_context(retrieved)
     history_text = _format_history(history)
-    chain = _build_chain(streaming=True)
+    if not _should_think(question):
+        chain = _build_direct_chain(streaming=True)
+        for chunk in chain.stream(
+            {"question": question, "context": context, "history_text": history_text}
+        ):
+            if chunk.content:
+                yield chunk.content
+        return
+    # 思考模式：先草稿（一次性），再流式答案
+    thinking = _think_draft(question, context, history_text)
+    yield f"【思考过程】\n{thinking}\n\n【最终答案】\n"
+    chain = _build_answer_chain(streaming=True)
     for chunk in chain.stream(
-        {"question": question, "context": context, "history_text": history_text}
+        {
+            "question": question,
+            "context": context,
+            "thinking": thinking,
+            "history_text": history_text,
+        }
     ):
         if chunk.content:
             yield chunk.content
@@ -287,11 +401,23 @@ def ask(vectordb, question, k=16, history=None):
     retrieved = retrieve(vectordb, query, k=k)
     context = _format_context(retrieved)
     history_text = _format_history(history)
-    chain = _build_chain(streaming=False)
+    if not _should_think(question):
+        chain = _build_direct_chain(streaming=False)
+        answer = chain.invoke(
+            {"question": question, "context": context, "history_text": history_text}
+        )
+        return answer.content, retrieved
+    thinking = _think_draft(question, context, history_text)
+    chain = _build_answer_chain(streaming=False)
     answer = chain.invoke(
-        {"question": question, "context": context, "history_text": history_text}
+        {
+            "question": question,
+            "context": context,
+            "thinking": thinking,
+            "history_text": history_text,
+        }
     )
-    return answer.content, retrieved
+    return f"【思考过程】\n{thinking}\n\n【最终答案】\n{answer.content}", retrieved
 
 
 def chat_reply(text, history=None):
