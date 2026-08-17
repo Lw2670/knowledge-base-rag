@@ -54,7 +54,7 @@ def _doc_key(doc):
     return (doc.metadata.get("source", ""), doc.page_content[:80])
 
 
-def fuse_and_select(scored, bm25_docs, top_n=6, margin=0.35, max_dist=1.0, max_per_source=4):
+def fuse_and_select(scored, bm25_docs, top_n=6, margin=0.35, max_dist=1.35, max_per_source=4):
     """
     RRF 融合向量+BM25 → 去重(每来源最多 max_per_source) → 阈值过滤 → top_n。
     scored: [(Document, distance)]，distance 越小越相关。

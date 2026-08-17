@@ -470,6 +470,14 @@ def load_vectordb():
         return cached[1]
     if os.path.exists(rag.CHROMA_DIR) and os.listdir(rag.CHROMA_DIR):
         vdb = Chroma(persist_directory=rag.CHROMA_DIR, embedding_function=rag.get_embeddings())
+        # 自愈：向量库为空（上次重建失败被清空）则自动重建，避免检索全部落空
+        try:
+            if vdb._collection.count() == 0:
+                st.warning("检测到向量库为空，正在自动重建索引...")
+                vdb = rag.rebuild()
+                current_mtime = os.path.getmtime(rag.INDEX_STAMP)
+        except Exception:
+            vdb = rag.rebuild()
     else:
         vdb = rag.rebuild()
     st.session_state["_vdb"] = (current_mtime, vdb)

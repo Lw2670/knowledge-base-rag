@@ -211,7 +211,7 @@ def _format_history(history):
     header = "【以下是之前的对话，仅作为上下文参考，**不要模仿其中的排版格式】"
     return chr(10).join([header] + msgs)
 
-def _postprocess(scored, top_n=6, margin=0.35, max_dist=1.0, max_per_source=4):
+def _postprocess(scored, top_n=6, margin=0.35, max_dist=1.35, max_per_source=4):
     """
     检索结果后处理：按来源限流 → 绝对/相对阈值过滤 → 精选 top_n。
     scored: [(Document, distance)]，distance 越小越相关。
@@ -241,14 +241,14 @@ def _postprocess(scored, top_n=6, margin=0.35, max_dist=1.0, max_per_source=4):
     return [d for d, _ in filtered[:top_n]]
 
 
-def retrieve(vectordb, question, k=16, top_n=6, margin=0.35, max_dist=1.0):
+def retrieve(vectordb, question, k=16, top_n=6, margin=0.35, max_dist=1.35):
     """混合检索：向量 + BM25 关键词 → RRF 融合 → 去重过滤 → 精选 top_n"""
     scored = vectordb.similarity_search_with_score(question, k=k)
     bm25_docs = hybrid.bm25_retrieve(question, k=k)
     return hybrid.fuse_and_select(scored, bm25_docs, top_n, margin, max_dist)
 
 
-def retrieve_by_vector(vectordb, embedding, query_text, k=16, top_n=6, margin=0.35, max_dist=1.0):
+def retrieve_by_vector(vectordb, embedding, query_text, k=16, top_n=6, margin=0.35, max_dist=1.35):
     """按预计算向量检索（供搜索进度流程用，embedding 已算好）+ BM25 融合"""
     scored = vectordb.similarity_search_by_vector_with_relevance_scores(embedding, k=k)
     bm25_docs = hybrid.bm25_retrieve(query_text, k=k)
