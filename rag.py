@@ -15,6 +15,7 @@ os.environ.setdefault("HF_HUB_OFFLINE", "1")  # 模型本地缓存加载，避�
 os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
 
 from langchain_core.documents import Document
+from langchain_core.prompts import ChatPromptTemplate
 from langchain_community.document_loaders import TextLoader
 from langchain_community.embeddings import FastEmbedEmbeddings
 from langchain_community.vectorstores import Chroma
@@ -135,43 +136,75 @@ def _make_llm(streaming=False):
         model=LLM_MODEL,
         api_key=LLM_API_KEY,
         base_url=LLM_BASE_URL,
-        temperature=0.3,
+        temperature=0,  # 知识库问答用 0，减少幻觉
         streaming=streaming,
         timeout=60,
         max_retries=2,
     )
 
 
+_PROMPT_TEMPLATE = ChatPromptTemplate.from_template(
+    """# 角色与规则
+你是基于参考资料作答的问答助手，必须严格遵循下面流程，**先输出完整思考过程，再输出最终答案**。
+【约束铁则】
+1. 所有信息只能来自【参考上下文】，上下文没有的内容，不要编造，直接说明“参考资料中无相关信息”；
+2. 禁止引入你的内置知识库信息，优先采信参考原文；
+3. 如果参考资料存在冲突，要在思考环节指出冲突点；
+4. 思考过程和最终答案必须明确分区，格式不能乱。
+{history_text}
+
+# 输出固定格式（严格遵守）
+【思考过程】
+一步步分析：
+1. 先拆解用户核心问题是什么，明确需要从参考资料里找哪些信息；
+2. 核对检索到的参考上下文，定位相关原文片段；
+3. 判断资料是否足够回答问题、是否存在信息缺失/矛盾；
+4. 规划如何组织答案、哪些内容不能说。
+
+【最终答案】
+清晰、精炼、引用原文依据作答；资料不足时如实说明。
+
+# 参考上下文
+{context}
+
+# 用户问题
+{question}"""
+)
+
+MAX_CONTEXT_CHARS = 12000  # 召回上下文上限，防止超模型上下文窗口
+
+
 def build_prompt(question, context, history_text=""):
-    """思考过程可视化模板：强制输出【思考过程】→【最终答案】→【来源引用】三段式"""
-    parts = [
-        "你是专业知识库问答助手，基于提供的【参考上下文】回答用户问题。",
-        "强制输出【思考过程】→【最终答案】→【资料来源引用】三段式。",
-        "硬性约束：",
-        "1. 禁止幻觉，没有原文支撑就明确告知无相关资料，禁止猜测；",
-        "2. 遇到模糊、矛盾、不完整信息，必须在思考环节标注风险；",
-        "3. 不得使用上下文以外的外部知识作答。",
-        "",
-        "## 固定输出格式",
-        "【思考过程】",
-        "1. 用户真实诉求拆解：提炼核心问题、隐含需求",
-        "2. 检索资料匹配：从上下文定位相关段落，标记可用信息",
-        "3. 可信度校验：判断信息是否充足、有无冲突、是否存在缺漏",
-        "4. 作答策略：确定回答边界，哪些可以直接回答，哪些需要说明资料不足",
-        "",
-        "【最终答案】",
-        "条理清晰作答，关键结论尽量贴合原文表述",
-        "",
-        "【来源引用】",
-        "标注支撑结论的原文片段/段落编号（如有）",
-    ]
-    if history_text:
-        parts.append("# 之前的对话（仅作上下文参考，不要改变输出格式）\n" + history_text)
-    parts.append("# 参考上下文")
-    parts.append(context)
-    parts.append("# 用户问题")
-    parts.append(question)
+    """生成提示词文本（兼容旧调用，实际链路走 LCEL 模板）"""
+    return _PROMPT_TEMPLATE.format(
+        question=question, context=context, history_text=history_text
+    )
+
+
+def _format_context(retrieved, max_chars=MAX_CONTEXT_CHARS):
+    """拼接检索上下文，超长截断防爆窗"""
+    parts, total = [], 0
+    for d in retrieved:
+        c = d.page_content
+        if total + len(c) > max_chars:
+            parts.append(c[: max_chars - total])
+            break
+        parts.append(c)
+        total += len(c)
     return "\n\n".join(parts)
+
+
+def _build_chain(streaming=False):
+    """LCEL RAG 链：输入 {question, context, history_text} → 三段式回答"""
+    return (
+        {
+            "context": lambda x: x["context"],
+            "question": lambda x: x["question"],
+            "history_text": lambda x: x.get("history_text", ""),
+        }
+        | _PROMPT_TEMPLATE
+        | _make_llm(streaming=streaming)
+    )
 
 
 def _format_history(history):
@@ -237,10 +270,13 @@ def build_query(question, history=None):
 
 
 def answer_stream(question, retrieved, history=None):
-    """流式生成答案，逐段 yield 文本片段（供界面实时展示思考过程）"""
-    context = "\n\n".join([d.page_content for d in retrieved])
+    """流式生成答案（LCEL 链），逐段 yield 文本片段"""
+    context = _format_context(retrieved)
     history_text = _format_history(history)
-    for chunk in _make_llm(streaming=True).stream(build_prompt(question, context, history_text)):
+    chain = _build_chain(streaming=True)
+    for chunk in chain.stream(
+        {"question": question, "context": context, "history_text": history_text}
+    ):
         if chunk.content:
             yield chunk.content
 
@@ -249,9 +285,12 @@ def ask(vectordb, question, k=16, history=None):
     """完整流程（命令行用）：检索 + 生成，返回答案和来源"""
     query = build_query(question, history)
     retrieved = retrieve(vectordb, query, k=k)
-    context = "\n\n".join([d.page_content for d in retrieved])
+    context = _format_context(retrieved)
     history_text = _format_history(history)
-    answer = _make_llm(streaming=False).invoke(build_prompt(question, context, history_text))
+    chain = _build_chain(streaming=False)
+    answer = chain.invoke(
+        {"question": question, "context": context, "history_text": history_text}
+    )
     return answer.content, retrieved
 
 
