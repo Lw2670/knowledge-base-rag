@@ -5,4 +5,5 @@ chroma_db/
 .index_built_at
 .streamlit/
 test_search.py
+test_both.py
 search_selfcheck*.png
