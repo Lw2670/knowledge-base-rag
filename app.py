@@ -461,12 +461,19 @@ st.markdown(_CUSTOM_CSS, unsafe_allow_html=True)
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-@st.cache_resource(show_spinner=False)
 def load_vectordb():
-    """加载向量库；不存在则构建"""
+    """加载向量库：按 .index_built_at 时间戳自动检测重建（外部 rebuild 也能立即生效）"""
+    stamp = rag.INDEX_STAMP
+    current_mtime = os.path.getmtime(stamp) if os.path.exists(stamp) else 0
+    cached = st.session_state.get("_vdb")
+    if cached and cached[0] == current_mtime:
+        return cached[1]
     if os.path.exists(rag.CHROMA_DIR) and os.listdir(rag.CHROMA_DIR):
-        return Chroma(persist_directory=rag.CHROMA_DIR, embedding_function=rag.get_embeddings())
-    return rag.rebuild()
+        vdb = Chroma(persist_directory=rag.CHROMA_DIR, embedding_function=rag.get_embeddings())
+    else:
+        vdb = rag.rebuild()
+    st.session_state["_vdb"] = (current_mtime, vdb)
+    return vdb
 
 
 @st.cache_data
@@ -492,8 +499,8 @@ warmup_embeddings()
 def handle_command(text):
     """指令：触发系统操作"""
     if "刷新" in text or "重建" in text:
-        load_vectordb.clear()
         rag.rebuild()
+        st.session_state.pop("_vdb", None)  # 清除向量库缓存，强制下次重新加载
         return "索引已刷新，已同步最新笔记。"
     if "清空" in text:
         st.session_state.messages = []
@@ -554,9 +561,9 @@ with st.sidebar:
     st.markdown("**索引管理**")
     st.caption("笔记更新后可点击刷新")
     if st.button("🔄 刷新索引", use_container_width=True):
-        load_vectordb.clear()
         with st.spinner("重建索引中..."):
             rag.rebuild()
+        st.session_state.pop("_vdb", None)  # 清除缓存，强制下次重新加载
         st.success("已同步最新笔记")
 
     if st.button("🗑️ 清空对话", use_container_width=True):
