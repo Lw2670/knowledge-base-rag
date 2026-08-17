@@ -32,6 +32,16 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 
 
+# 预热 embedding 模型（避免首次搜索时冷加载卡住）
+@st.cache_resource
+def warmup_embeddings():
+    """启动时预热：触发一次空 embedding，让 BGE 模型从磁盘加载到内存"""
+    rag.get_embeddings().embed_query("warmup")
+    return "ready"
+
+warmup_embeddings()  # 应用启动时执行一次
+
+
 # ===== 意图处理分支（可配置）=====
 def handle_command(text):
     """指令：触发系统操作"""
@@ -48,30 +58,22 @@ def handle_command(text):
 def search_with_progress(vectordb, query, k=5):
     """
     搜索：带真实进度的分阶段检索。
-    每个阶段对应真实的检索操作（理解→向量化→检索→整理），
-    进度条在每步操作完成后推进，反映真实过程而非静态装饰。
+    每个阶段对应真实的检索操作（理解→向量化→检索→整理）。
+    注：不用 st.progress（它在 chat_message 内会冻结后续渲染），
+       改用带 ✓ 箭头的 st.write 展示阶段，最稳。
     """
-    with st.status("正在检索...", expanded=True) as status:
-        bar = st.progress(0.0, text="准备检索")
+    st.write("① 理解查询...")
+    time.sleep(0.15)
 
-        st.write("🔍 **① 理解查询**")
-        time.sleep(0.15)
-        bar.progress(0.2, text="理解查询")
+    st.write("② 向量化查询（生成查询向量）...")
+    embedding = rag.get_embeddings().embed_query(query)  # 真实：embedding 计算
+    time.sleep(0.15)
 
-        st.write("🧮 **② 向量化查询**（生成查询向量）")
-        embedding = rag.get_embeddings().embed_query(query)  # 真实：embedding 计算
-        time.sleep(0.15)
-        bar.progress(0.5, text="向量化查询")
+    st.write("③ 检索向量库（相似度匹配）...")
+    results = vectordb.similarity_search_by_vector(embedding, k=k)  # 真实：向量检索
+    time.sleep(0.15)
 
-        st.write("🗄️ **③ 检索向量库**（相似度匹配）")
-        results = vectordb.similarity_search_by_vector(embedding, k=k)  # 真实：向量检索
-        time.sleep(0.15)
-        bar.progress(0.8, text="检索向量库")
-
-        st.write("📋 **④ 整理结果**")
-        time.sleep(0.15)
-        bar.progress(1.0, text="完成")
-        status.update(label=f"检索完成 · 找到 {len(results)} 条结果", state="complete")
+    st.write(f"④ 整理结果 ✓（找到 {len(results)} 条）")
 
     return results
 
@@ -157,7 +159,11 @@ if prompt:
             answer = st.write_stream(rag.answer_stream_chat(prompt, history))
 
         elif result["intent"] == "search":
-            retrieved = search_with_progress(load_vectordb(), prompt)
+            try:
+                retrieved = search_with_progress(load_vectordb(), prompt)
+            except Exception as e:
+                st.error(f"检索出错：{e}")
+                retrieved = []
             if not retrieved:
                 answer = "没有找到相关笔记。可以换个关键词试试。"
                 st.markdown(answer)

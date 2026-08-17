@@ -4,3 +4,5 @@ __pycache__/
 chroma_db/
 .index_built_at
 .streamlit/
+test_search.py
+search_selfcheck*.png
