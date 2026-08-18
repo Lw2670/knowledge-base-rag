@@ -12,6 +12,7 @@ from functools import lru_cache
 # 国内网络加速：HuggingFace 镜像 + 禁用 Xet 存储（避免 401 错误）
 os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
 os.environ.setdefault("HF_HUB_OFFLINE", "1")  # 模型本地缓存加载，避免联网超时
+os.environ.setdefault("FASTEMBED_CACHE_PATH", "D:/fastembed_cache")  # 缓存放 D 盘，避免清 C 盘缓存时被删
 os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
 
 from langchain_core.documents import Document

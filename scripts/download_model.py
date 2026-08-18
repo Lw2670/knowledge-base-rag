@@ -25,7 +25,10 @@ MODEL_ID = "jinaai/jina-embeddings-v2-base-zh"
 
 
 def get_cache_dir():
-    """与 fastembed.common.utils.define_cache_dir 保持一致"""
+    """与 fastembed 缓存目录一致（优先环境变量，默认系统临时目录）"""
+    env = os.environ.get("FASTEMBED_CACHE_PATH")
+    if env:
+        return env
     return os.path.join(tempfile.gettempdir(), "fastembed_cache")
 
 
